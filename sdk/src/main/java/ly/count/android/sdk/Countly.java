@@ -24,8 +24,6 @@ package ly.count.android.sdk;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.util.Log;
 
@@ -51,7 +49,7 @@ public class Countly {
     /**
      * Current version of the Count.ly Android SDK as a displayable string.
      */
-    public static final String COUNTLY_SDK_VERSION_STRING = "16.06.01";
+    public static final String COUNTLY_SDK_VERSION_STRING = "16.06.04";
     /**
      * Default string used in the begin session metrics if the
      * app version cannot be found.
@@ -66,7 +64,7 @@ public class Countly {
      * Determines how many custom events can be queued locally before
      * an attempt is made to submit them to a Count.ly server.
      */
-    private static final int EVENT_QUEUE_SIZE_THRESHOLD = 10;
+    private static int EVENT_QUEUE_SIZE_THRESHOLD = 10;
     /**
      * How often onTimer() is called.
      */
@@ -217,14 +215,14 @@ public class Countly {
         // if we get here and eventQueue_ != null, init is being called again with the same values,
         // so there is nothing to do, because we are already initialized with those values
         if (eventQueue_ == null) {
+            final CountlyStore countlyStore = new CountlyStore(context);
+
             DeviceId deviceIdInstance;
             if (deviceID != null) {
-                deviceIdInstance = new DeviceId(deviceID);
+                deviceIdInstance = new DeviceId(countlyStore, deviceID);
             } else {
-                deviceIdInstance = new DeviceId(idMode);
+                deviceIdInstance = new DeviceId(countlyStore, idMode);
             }
-
-            final CountlyStore countlyStore = new CountlyStore(context);
 
             deviceIdInstance.init(context, countlyStore, true);
 
@@ -262,7 +260,21 @@ public class Countly {
      * @throws IllegalStateException if no CountlyMessaging class is found (you need to use countly-messaging-sdk-android library instead of countly-sdk-android)
      */
     public Countly initMessaging(Activity activity, Class<? extends Activity> activityClass, String projectID, Countly.CountlyMessagingMode mode) {
-        return initMessaging(activity, activityClass, projectID, null, mode);
+        return initMessaging(activity, activityClass, projectID, null, mode, false);
+    }
+
+    /**
+     * Initializes the Countly MessagingSDK. Call from your main Activity's onCreate() method.
+     * @param activity application activity which acts as a final destination for notifications
+     * @param activityClass application activity class which acts as a final destination for notifications
+     * @param projectID ProjectID for this app from Google API Console
+     * @param mode whether this app installation is a test release or production
+     * @param disableUI don't display dialogs & notifications when receiving push notification
+     * @return Countly instance for easy method chaining
+     * @throws IllegalStateException if no CountlyMessaging class is found (you need to use countly-messaging-sdk-android library instead of countly-sdk-android)
+     */
+    public Countly initMessaging(Activity activity, Class<? extends Activity> activityClass, String projectID, Countly.CountlyMessagingMode mode, boolean disableUI) {
+        return initMessaging(activity, activityClass, projectID, null, mode, disableUI);
     }
     /**
      * Initializes the Countly MessagingSDK. Call from your main Activity's onCreate() method.
@@ -275,11 +287,26 @@ public class Countly {
      * @throws IllegalStateException if no CountlyMessaging class is found (you need to use countly-messaging-sdk-android library instead of countly-sdk-android)
      */
     public synchronized Countly initMessaging(Activity activity, Class<? extends Activity> activityClass, String projectID, String[] buttonNames, Countly.CountlyMessagingMode mode) {
+        return initMessaging(activity, activityClass, projectID, null, mode, false);
+    }
+
+    /**
+     * Initializes the Countly MessagingSDK. Call from your main Activity's onCreate() method.
+     * @param activity application activity which acts as a final destination for notifications
+     * @param activityClass application activity class which acts as a final destination for notifications
+     * @param projectID ProjectID for this app from Google API Console
+     * @param buttonNames Strings to use when displaying Dialogs (uses new String[]{"Open", "Review"} by default)
+     * @param mode whether this app installation is a test release or production
+     * @param disableUI don't display dialogs & notifications when receiving push notification
+     * @return Countly instance for easy method chaining
+     * @throws IllegalStateException if no CountlyMessaging class is found (you need to use countly-messaging-sdk-android library instead of countly-sdk-android)
+     */
+    public synchronized Countly initMessaging(Activity activity, Class<? extends Activity> activityClass, String projectID, String[] buttonNames, Countly.CountlyMessagingMode mode, boolean disableUI) {
         if (mode != null && !MessagingAdapter.isMessagingAvailable()) {
             throw new IllegalStateException("you need to include countly-messaging-sdk-android library instead of countly-sdk-android if you want to use Countly Messaging");
         } else {
             messagingMode_ = mode;
-            if (!MessagingAdapter.init(activity, activityClass, projectID, buttonNames)) {
+            if (!MessagingAdapter.init(activity, activityClass, projectID, buttonNames, disableUI)) {
                 throw new IllegalStateException("couldn't initialize Countly Messaging");
             }
         }
@@ -401,6 +428,47 @@ public class Countly {
      */
     public void onRegistrationId(String registrationId) {
         connectionQueue_.tokenSession(registrationId, messagingMode_);
+    }
+
+    /**
+     * Changes current device id type to the one specified in parameter. Closes current session and
+     * reopens new one with new id. Doesn't merge user profiles on the server
+     * @param type Device ID type to change to
+     * @param deviceId Optional device ID for a case when type = DEVELOPER_SPECIFIED
+     */
+    public void changeDeviceId(DeviceId.Type type, String deviceId) {
+        if (eventQueue_ == null) {
+            throw new IllegalStateException("init must be called before changeDeviceId");
+        }
+        if (activityCount_ == 0) {
+            throw new IllegalStateException("must call onStart before changeDeviceId");
+        }
+        if (type == null) {
+            throw new IllegalStateException("type cannot be null");
+        }
+
+        connectionQueue_.endSession(roundedSecondsSinceLastSessionDurationUpdate(), connectionQueue_.getDeviceId().getId());
+        connectionQueue_.getDeviceId().changeToId(context_, connectionQueue_.getCountlyStore(), type, deviceId);
+        connectionQueue_.beginSession();
+    }
+
+    /**
+      * Changes current device id to the one specified in parameter. Merges user profile with new id
+      * (if any) with old profile.
+      * @param deviceId new device id
+      */
+    public void changeDeviceId(String deviceId) {
+        if (eventQueue_ == null) {
+            throw new IllegalStateException("init must be called before changeDeviceId");
+        }
+        if (activityCount_ == 0) {
+            throw new IllegalStateException("must call onStart before changeDeviceId");
+        }
+        if (deviceId == null || "".equals(deviceId)) {
+            throw new IllegalStateException("deviceId cannot be null or empty");
+        }
+
+        connectionQueue_.changeDeviceId(deviceId, roundedSecondsSinceLastSessionDurationUpdate());
     }
 
     /**
@@ -816,6 +884,16 @@ public class Countly {
         return enableLogging_;
     }
 
+    public synchronized Countly enableParameterTamperingProtection(String salt) {
+        ConnectionProcessor.salt = salt;
+        return this;
+    }
+
+    public synchronized Countly setEventQueueSizeToSend(int size) {
+        EVENT_QUEUE_SIZE_THRESHOLD = size;
+        return this;
+    }
+
     private boolean appLaunchDeepLink = true;
 
     public static void onCreate(Activity activity) {
@@ -894,6 +972,16 @@ public class Countly {
      */
     static int currentTimestamp() {
         return ((int)(System.currentTimeMillis() / 1000l));
+    }
+
+    private static long lastTsMs;
+    static synchronized long currentTimestampMs() {
+        long ms = System.currentTimeMillis();
+        while (lastTsMs >= ms) {
+            ms += 1;
+        }
+        lastTsMs = ms;
+        return ms;
     }
 
     /**
