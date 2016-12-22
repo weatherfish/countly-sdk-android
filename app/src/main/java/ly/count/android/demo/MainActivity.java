@@ -5,11 +5,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.view.View;
 import android.widget.Button;
-import android.widget.Toast;
 
 import java.util.HashMap;
 
 import ly.count.android.sdk.Countly;
+import ly.count.android.sdk.CountlyStarRating;
 
 
 public class MainActivity extends Activity {
@@ -113,6 +113,43 @@ public class MainActivity extends Activity {
                 }
             }
         });
+
+        Button button7 = (Button) findViewById(R.id.app_rating_default);
+        button7.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                Countly.sharedInstance().showStarRating(activity, new CountlyStarRating.RatingCallback() {
+                    @Override
+                    public void onRate(int rating) {
+
+                    }
+
+                    @Override
+                    public void onDismiss() {
+
+                    }
+                });
+            }
+        });
+
+        Button button8 = (Button) findViewById(R.id.app_rating_custom);
+        button8.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+            }
+        });
+
+        CountlyStarRating.RatingCallback callback = new CountlyStarRating.RatingCallback() {
+            @Override
+            public void onRate(int rating) {
+            }
+
+            @Override
+            public void onDismiss() {
+            }
+        };
     }
 
     public void setUserData(){
