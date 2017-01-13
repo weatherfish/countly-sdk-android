@@ -1,5 +1,6 @@
 package ly.count.android.sdk;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -35,6 +36,13 @@ public class CountlyStarRating {
             final String message,
             final String cancelText,
             final CountlyStarRating.RatingCallback callback) {
+
+        if(!(context instanceof Activity)) {
+            if (Countly.sharedInstance().isLoggingEnabled()) {
+                Log.e(Countly.TAG, "Can't show star rating dialog, the provided context is not based off a activity");
+            }
+            return;
+        }
 
         LayoutInflater inflater = (LayoutInflater) context.getSystemService( Context.LAYOUT_INFLATER_SERVICE );
         View dialogLayout = inflater.inflate(R.layout.star_rating_layout, null);
@@ -76,7 +84,7 @@ public class CountlyStarRating {
 
                 Countly.sharedInstance().recordEvent("[CLY]_star_rating", segm, 1);
 
-                dialog.cancel();
+                dialog.dismiss();
                 if(callback != null) {
                     callback.onRate(rating);
                 }
@@ -142,7 +150,7 @@ public class CountlyStarRating {
                     srp.sessionLimit = json.optInt(KEY_SESSION_LIMIT, 5);
                     srp.sessionAmount = json.optInt(KEY_SESSION_AMOUNT, 0);
                     srp.isShownForCurrentVersion = json.optBoolean(KEY_IS_SHOWN_FOR_CURRENT, false);
-                    srp.automaticRatingShouldBeShown = json.optBoolean(KEY_AUTOMATIC_RATING_IS_SHOWN, false);
+                    srp.automaticRatingShouldBeShown = json.optBoolean(KEY_AUTOMATIC_RATING_IS_SHOWN, true);
                     srp.disabledAutomaticForNewVersions = json.optBoolean(KEY_DISABLE_AUTOMATIC_NEW_VERSIONS, false);
                     srp.automaticHasBeenShown = json.optBoolean(KEY_AUTOMATIC_HAS_BEEN_SHOWN, false);
 
@@ -235,7 +243,7 @@ public class CountlyStarRating {
 
         //a new app version is released, reset all counters
         //if we show the rating once per apps lifetime, don't reset the counters
-        if(!currentAppVersion.equals(srp.appVersion) && !srp.disabledAutomaticForNewVersions) {
+        if(currentAppVersion != null && !currentAppVersion.equals(srp.appVersion) && !srp.disabledAutomaticForNewVersions) {
             srp.appVersion = currentAppVersion;
             srp.isShownForCurrentVersion = false;
             srp.sessionAmount = 0;
